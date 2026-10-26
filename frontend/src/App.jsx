@@ -64,86 +64,11 @@ import {
 } from "recharts";
 import "./App.css";
 import "./components/PhysioSidebar.css";
-const initial = [
-  {
-    id: 1,
-    name: "Knee Extensions",
-    mins: 8,
-    reps: "3 × 12",
-    level: "Beginner",
-    done: true,
-    c: "teal",
-    note: "Slowly straighten your knee and hold at the top.",
-  },
-  {
-    id: 2,
-    name: "Straight Leg Raises",
-    mins: 10,
-    reps: "3 × 10",
-    level: "Beginner",
-    done: true,
-    c: "violet",
-    note: "Keep your knee straight as you lift your leg.",
-  },
-  {
-    id: 3,
-    name: "Seated Hamstring Stretch",
-    mins: 6,
-    reps: "3 × 30 sec",
-    level: "Gentle",
-    done: true,
-    c: "orange",
-    note: "Reach forward until you feel a gentle stretch.",
-  },
-  {
-    id: 4,
-    name: "Heel Slides",
-    mins: 8,
-    reps: "3 × 12",
-    level: "Beginner",
-    done: false,
-    c: "blue",
-    note: "Slide your heel toward you with control.",
-  },
-  {
-    id: 5,
-    name: "Glute Bridge",
-    mins: 9,
-    reps: "3 × 10",
-    level: "Intermediate",
-    done: false,
-    c: "rose",
-    note: "Lift through your hips while keeping ribs relaxed.",
-  },
-  {
-    id: 6,
-    name: "Wall Calf Stretch",
-    mins: 5,
-    reps: "2 × 30 sec",
-    level: "Gentle",
-    done: false,
-    c: "mint",
-    note: "Keep the back heel grounded.",
-  },
-];
-const week = [
-  ["Mon", 80],
-  ["Tue", 100],
-  ["Wed", 70],
-  ["Thu", 92],
-  ["Fri", 75],
-  ["Sat", 88],
-  ["Sun", 60],
-].map(([d, value]) => ({ d, value }));
-const pain = [
-  ["Oct 11", 5],
-  ["Oct 12", 4],
-  ["Oct 13", 5],
-  ["Oct 14", 3],
-  ["Oct 15", 4],
-  ["Oct 16", 2],
-  ["Today", 3],
-].map(([d, value]) => ({ d, value }));
+import { supabase } from "./supabase";
+
+const initial = [];
+const week = [];
+const pain = [];
 const get = (k, d) => {
   try {
     return JSON.parse(localStorage.getItem(k)) || d;
@@ -152,33 +77,76 @@ const get = (k, d) => {
   }
 };
 function App() {
-  const [ex, setEx] = useState(() => get("pt-ex", initial));
-  const [journal, setJournal] = useState(() =>
-    get("pt-journal", [
-      {
-        id: 1,
-        date: "2026-10-16",
-        area: "Right knee",
-        pain: 3,
-        note: "Mild stiffness after my walk.",
-      },
-    ]),
-  );
+  const [ex, setEx] = useState(initial);
+  const [journal, setJournal] = useState([]);
   const [toast, setToast] = useState("");
   const [loggedIn, setLoggedIn] = useState(
-    () => localStorage.getItem("pt-auth") === "true",
+    false,
   );
+  const [currentUser, setCurrentUser] = useState(null);
+  const [dataOwner, setDataOwner] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   useEffect(() => {
-    localStorage.setItem("pt-ex", JSON.stringify(ex));
-  }, [ex]);
+    localStorage.removeItem("pt-auth");
+    localStorage.removeItem("pt-user");
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) console.error("Unable to restore login session:", error.message);
+      setLoggedIn(Boolean(data.session));
+      setCurrentUser(data.session?.user || null);
+      setAuthLoading(false);
+    });
+  }, []);
+
   useEffect(() => {
-    localStorage.setItem("pt-journal", JSON.stringify(journal));
-  }, [journal]);
+    if (!currentUser) return;
+
+    let cancelled = false;
+    Promise.all([
+      supabase.from("exercises").select("*").order("created_at", { ascending: true }),
+      supabase.from("pain_logs").select("*").order("created_at", { ascending: false }),
+    ]).then(([exerciseResult, painResult]) => {
+      if (cancelled) return;
+      if (exerciseResult.error) {
+        console.error("Unable to load exercises:", exerciseResult.error.message);
+        setEx([]);
+      } else {
+        setEx((exerciseResult.data || []).map((exercise) => ({
+          ...exercise,
+          done: Boolean(exercise.completed ?? exercise.done),
+        })));
+      }
+      if (painResult.error) {
+        console.error("Unable to load pain history:", painResult.error.message);
+        setJournal([]);
+      } else {
+        setJournal((painResult.data || []).map((entry) => ({
+          ...entry,
+          date: entry.created_at
+            ? new Date(entry.created_at).toISOString().slice(0, 10)
+            : "",
+        })));
+      }
+      setDataOwner(currentUser.id);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
   const notify = (x) => {
     setToast(x);
     setTimeout(() => setToast(""), 2500);
   };
-  const toggle = (id) => {
+  const toggle = async (id) => {
+    const exercise = ex.find((item) => item.id === id);
+    if (!exercise) return;
+    const completed = !exercise.done;
+    const { error } = await supabase
+      .from("exercises")
+      .update({ completed })
+      .eq("id", id);
+    if (error) return notify(error.message);
     setEx((a) => a.map((x) => (x.id === id ? { ...x, done: !x.done } : x)));
     notify("Exercise progress updated");
   };
@@ -193,15 +161,17 @@ function App() {
         <Route path="/gallery" element={<LandingV2 page="gallery" />} />
         <Route path="/blog" element={<LandingV2 page="blog" />} />
         <Route path="/contact" element={<LandingV2 page="contact" />} />
-        <Route path="/login" element={<Auth setLoggedIn={setLoggedIn} />} />
-        <Route path="/register" element={<Auth setLoggedIn={setLoggedIn} />} />
+        <Route path="/login" element={<Auth setLoggedIn={setLoggedIn} setUser={setCurrentUser} setDataOwner={setDataOwner} />} />
+        <Route path="/register" element={<Auth setLoggedIn={setLoggedIn} setUser={setCurrentUser} setDataOwner={setDataOwner} />} />
         <Route
           path="/*"
           element={
-            loggedIn ? (
-              <Layout {...data} setLoggedIn={setLoggedIn} />
+            authLoading ? (
+              <div role="status">Loading account...</div>
+            ) : loggedIn && currentUser && dataOwner === currentUser.id ? (
+              <Layout {...data} currentUser={currentUser} setLoggedIn={setLoggedIn} setUser={setCurrentUser} />
             ) : (
-              <Navigate to="/login" replace />
+              loggedIn ? <div role="status">Loading account data...</div> : <Navigate to="/login" replace />
             )
           }
         />
@@ -405,7 +375,7 @@ function Layout(p) {
             <span className="clinic-brand-mark"><HeartPulse aria-hidden="true" /></span>
             <span className="clinic-brand-copy">
               <strong>PhysioCare</strong>
-              <small>Management Portal</small>
+              <small>Patient Portal</small>
             </span>
           </NavLink>
           <button
@@ -452,10 +422,17 @@ function Layout(p) {
             ))}
           </nav>
           <div className="clinic-profile">
-            <div className="clinic-profile-avatar" aria-hidden="true">AM</div>
+            <div className="clinic-profile-avatar" aria-hidden="true">
+              {(p.currentUser?.user_metadata?.full_name || "U")
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join("")
+                .toUpperCase()}
+            </div>
             <div className="clinic-profile-copy">
-              <strong>Dr. Alex Morgan</strong>
-              <span>Physiotherapist</span>
+              <strong>{p.currentUser?.user_metadata?.full_name || p.currentUser?.email}</strong>
+              <span>{p.currentUser?.user_metadata?.role || "patient"}</span>
             </div>
             <button
               type="button"
@@ -482,9 +459,12 @@ function Layout(p) {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={() => {
-                    localStorage.removeItem("pt-auth");
+                  onClick={async () => {
+                    const { error } = await supabase.auth.signOut();
+                    if (error) console.error("Sign out failed:", error.message);
                     p.setLoggedIn(false);
+                    setDataOwner(null);
+                    p.setUser(null);
                   }}
                 >
                   Sign out
@@ -508,7 +488,7 @@ function Layout(p) {
           </button>
           <div>
             <small>Patient portal</small>
-            <h1>Welcome back, Alex</h1>
+            <h1>Welcome back, {p.currentUser?.user_metadata?.full_name || "there"}</h1>
           </div>
           <div className="top">
             <label>
@@ -519,21 +499,19 @@ function Layout(p) {
               <Bell size={19} />
               <i />
             </button>
-            <b>AM</b>
+            <b>
+              {(p.currentUser?.user_metadata?.full_name || "U")
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join("")
+                .toUpperCase()}
+            </b>
           </div>
           {notes && (
             <div className="notices">
               <strong>Notifications</strong>
-              <p>
-                <b>Today's plan is ready</b>
-                <br />
-                Four exercises are scheduled.
-              </p>
-              <p>
-                <b>Great consistency!</b>
-                <br />
-                You reached a 6 day streak.
-              </p>
+              <p>No notifications yet.</p>
             </div>
           )}
         </header>
@@ -992,7 +970,7 @@ function LandingV2({ page = "home" }) {
     </div>
   );
 }
-function Auth({ setLoggedIn }) {
+function Auth({ setLoggedIn, setUser, setDataOwner }) {
   const nav = useNavigate();
   const location = useLocation();
   const mode = location.pathname === "/register" ? "register" : "login";
@@ -1001,25 +979,35 @@ function Auth({ setLoggedIn }) {
   const notice = location.state?.registered
     ? "Your account is ready. Log in to continue."
     : "";
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (mode === "register") {
-      if (!form.name || !form.email || form.password.length < 6)
-        return setError(
-          "Please complete all fields. Password must be at least 6 characters.",
-        );
-      localStorage.setItem("pt-user", JSON.stringify(form));
-      nav("/login", { state: { registered: true } });
-      return;
+    try {
+      const result =
+        mode === "register"
+          ? await supabase.auth.signUp({
+              email: form.email,
+              password: form.password,
+              options: {
+                data: { role: "patient", full_name: form.name },
+              },
+            })
+          : await supabase.auth.signInWithPassword({
+              email: form.email,
+              password: form.password,
+            });
+      if (result.error) throw new Error(result.error.message);
+      setDataOwner(null);
+      setUser(result.data.user);
+      setLoggedIn(true);
+      nav("/dashboard");
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to authenticate. Please try again.",
+      );
     }
-    let saved = get("pt-user", null);
-    if (!saved) return setError("No account found. Please register first.");
-    if (saved.email !== form.email || saved.password !== form.password)
-      return setError("Email or password is incorrect.");
-    localStorage.setItem("pt-auth", "true");
-    setLoggedIn(true);
-    nav("/dashboard");
   };
   return (
     <div className="auth auth-v2">
@@ -1090,7 +1078,7 @@ function Auth({ setLoggedIn }) {
                 required
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder={mode === "register" ? "At least 6 characters" : "Enter your password"}
+                placeholder={mode === "register" ? "At least 8 characters" : "Enter your password"}
               />
             </label>
             {error && <p className="autherror" role="alert">{error}</p>}
@@ -1158,16 +1146,17 @@ function Row({ x, toggle }) {
     </div>
   );
 }
-function Overview({ ex, toggle, notify }) {
+function Overview({ ex, toggle, notify, currentUser }) {
   let done = ex.filter((x) => x.done).length;
+  const completion = ex.length ? Math.round((done / ex.length) * 100) : 0;
   return (
     <Page>
       <section className="hero">
         <div>
           <small>
-            <Calendar size={14} /> Thursday, October 17
+            <Calendar size={14} /> {new Date().toLocaleDateString()}
           </small>
-          <h2>Good morning, Alex 👋</h2>
+          <h2>Welcome, {currentUser?.user_metadata?.full_name || "there"} 👋</h2>
           <p>Small steps every day lead to stronger recovery.</p>
         </div>
         <button
@@ -1183,34 +1172,34 @@ function Overview({ ex, toggle, notify }) {
           c="teal"
           icon={<Check />}
           label="Today’s completion"
-          value={`${done * 25}%`}
-          sub="On track for today"
+          value={`${completion}%`}
+          sub={ex.length ? "Based on your assigned exercises" : "No assigned exercises yet"}
         />
         <Stat
           c="violet"
           icon={<TrendingUp />}
           label="Weekly adherence"
-          value="86%"
-          sub="↑ 8% vs last week"
+          value="0%"
+          sub="No weekly activity recorded yet"
         />
         <Stat
           c="orange"
           icon={<Dumbbell />}
           label="Exercises completed"
-          value={`${done + 15}/24`}
-          sub="6 remaining this week"
+          value={`${done}/${ex.length}`}
+          sub="Assigned exercises completed"
         />
         <Stat
           c="pink"
           icon={<Flame />}
           label="Current streak"
-          value="6 days"
-          sub="Your personal best: 8"
+          value="0 days"
+          sub="Complete a session to begin a streak"
         />
       </div>
       <div className="twocol">
         <section className="card">
-          <Title title="Today’s therapy plan" sub="4 exercises · 32 minutes">
+          <Title title="Today’s therapy plan" sub={`${ex.length} assigned exercises`}>
             <button className="link">
               View all <ChevronRight size={15} />
             </button>
@@ -1223,24 +1212,22 @@ function Overview({ ex, toggle, notify }) {
           {ex.slice(0, 4).map((x) => (
             <Row x={x} toggle={toggle} key={x.id} />
           ))}
+          {ex.length === 0 && <p>No exercises have been assigned yet.</p>}
         </section>
         <section className="card milestone">
           <i>
             <TrendingUp />
           </i>
-          <h3>You’re building consistency!</h3>
-          <p>
-            You’ve completed 18 exercises this week. Keep moving at a pace that
-            feels right for you.
-          </p>
+          <h3>Your recovery progress</h3>
+          <p>Your progress summary will appear here as you record activity.</p>
           <div className="label">
             <span>Weekly goal</span>
-            <b>18 of 24</b>
+            <b>{done} of {ex.length}</b>
           </div>
           <div className="progress">
-            <i style={{ width: "75%" }} />
+            <i style={{ width: `${completion}%` }} />
           </div>
-          <small>6 more exercises to reach your weekly goal</small>
+          <small>{ex.length ? `${ex.length - done} exercises remaining` : "No weekly goal is set yet"}</small>
         </section>
       </div>
       <div className="twocol charts">
@@ -1267,7 +1254,7 @@ function Overview({ ex, toggle, notify }) {
         <section className="card">
           <Title
             title="Pain progress"
-            sub="Patient-reported demo data · 0–10 scale"
+            sub="Patient-reported entries · 0–10 scale"
           />
           <ResponsiveContainer width="100%" height={210}>
             <LineChart data={pain}>
@@ -1443,6 +1430,14 @@ function Sessions({ ex, toggle, notify }) {
     return () => clearInterval(t);
   }, [run]);
   let x = ex[i];
+  if (!x) {
+    return (
+      <Page>
+        <Head title="Guided session" text="Follow along at your own pace." />
+        <section className="card">No exercises have been assigned yet.</section>
+      </Page>
+    );
+  }
   return (
     <Page>
       <Head title="Guided session" text="Follow along at your own pace." />
@@ -1518,36 +1513,36 @@ function Analytics() {
     <Page>
       <Head
         title="Progress & analytics"
-        text="A clear view of your recovery routine. Demo data is shown."
+        text="A clear view of your recorded recovery activity."
       />
       <div className="stats">
         <Stat
           c="teal"
           icon={<TrendingUp />}
           label="Plan adherence"
-          value="86%"
-          sub="↑ 8% from last period"
+          value="0%"
+          sub="No activity recorded yet"
         />
         <Stat
           c="violet"
           icon={<Clock />}
           label="Exercise minutes"
-          value="142"
-          sub="This month"
+          value="0"
+          sub="Recorded minutes"
         />
         <Stat
           c="orange"
           icon={<Check />}
           label="Completed sessions"
-          value="18"
-          sub="3 sessions remaining"
+          value="0"
+          sub="No sessions recorded yet"
         />
         <Stat
           c="pink"
           icon={<Flame />}
           label="Longest streak"
-          value="8 days"
-          sub="Current: 6 days"
+          value="0 days"
+          sub="No streak recorded yet"
         />
       </div>
       <div className="twocol charts">
@@ -1563,7 +1558,7 @@ function Analytics() {
           </ResponsiveContainer>
         </section>
         <section className="card">
-          <Title title="Pain trend" sub="Patient-reported demo data" />
+          <Title title="Pain trend" sub="Patient-reported entries" />
           <ResponsiveContainer width="100%" height={270}>
             <LineChart data={pain}>
               <XAxis dataKey="d" />
@@ -1579,15 +1574,34 @@ function Analytics() {
 }
 function Pain({ journal, setJournal, notify }) {
   const [f, setF] = useState({
-    date: "2026-10-17",
-    area: "Right knee",
-    pain: 3,
+    date: new Date().toISOString().slice(0, 10),
+    area: "",
+    pain: 0,
     note: "",
   });
-  const save = () => {
+  const save = async () => {
+    if (!f.area) return notify("Choose a body area before saving");
     if (!f.note.trim()) return notify("Add a short note before saving");
-    setJournal([{ ...f, id: Date.now() }, ...journal]);
-    setF({ ...f, note: "" });
+    const { data, error } = await supabase.from("pain_logs").insert({
+      area: f.area,
+      pain: f.pain,
+      note: f.note.trim(),
+      created_at: new Date(`${f.date}T12:00:00`).toISOString(),
+    });
+    if (error) return notify(error.message);
+    const entry = data?.[0];
+    if (entry) {
+      setJournal((previous) => [
+        { ...entry, date: f.date },
+        ...previous,
+      ]);
+    }
+    setF({
+      date: new Date().toISOString().slice(0, 10),
+      area: "",
+      pain: 0,
+      note: "",
+    });
     notify("Pain entry saved");
   };
   return (
@@ -1613,6 +1627,7 @@ function Pain({ journal, setJournal, notify }) {
               value={f.area}
               onChange={(e) => setF({ ...f, area: e.target.value })}
             >
+              <option value="">Select area</option>
               <option>Right knee</option>
               <option>Left knee</option>
               <option>Lower back</option>
@@ -1650,7 +1665,7 @@ function Pain({ journal, setJournal, notify }) {
           </p>
         </section>
         <section className="card history">
-          <Title title="Recent entries" sub="Your private local demo history" />
+          <Title title="Recent entries" sub="Your saved pain history" />
           {journal.map((x) => (
             <div className="journal" key={x.id}>
               <b>{x.pain}</b>
@@ -1662,8 +1677,15 @@ function Pain({ journal, setJournal, notify }) {
               <button
                 onClick={() => {
                   if (confirm("Delete this entry?")) {
-                    setJournal(journal.filter((j) => j.id !== x.id));
-                    notify("Entry deleted");
+                    supabase
+                      .from("pain_logs")
+                      .delete()
+                      .eq("id", x.id)
+                      .then(({ error }) => {
+                        if (error) return notify(error.message);
+                        setJournal(journal.filter((j) => j.id !== x.id));
+                        notify("Entry deleted");
+                      });
                   }
                 }}
               >
@@ -1676,7 +1698,7 @@ function Pain({ journal, setJournal, notify }) {
     </Page>
   );
 }
-function Reports({ ex, journal, notify }) {
+function Reports({ ex, journal, notify, currentUser }) {
   const csv = () => {
     let a = document.createElement("a");
     a.href = URL.createObjectURL(
@@ -1708,20 +1730,21 @@ function Reports({ ex, journal, notify }) {
             </i>
             Physio<span>Track</span>
           </b>
-          <span>Demo-data preview</span>
+          <span>Account activity</span>
         </div>
         <h2>Recovery progress summary</h2>
-        <p>Alex Morgan · Reporting period: October 11–17, 2026</p>
+        <p>{currentUser?.user_metadata?.full_name || currentUser?.email} · Saved activity summary</p>
         <div className="reportstats">
           <b>
-            <small>Weekly adherence</small>86%
+            <small>Weekly adherence</small>0%
           </b>
           <b>
             <small>Completed exercises</small>
-            {ex.filter((x) => x.done).length + 15}/24
+            {ex.filter((x) => x.done).length}/{ex.length}
           </b>
           <b>
-            <small>Exercise minutes</small>142 min
+            <small>Exercise minutes</small>
+            {ex.reduce((sum, item) => sum + Number(item.duration || item.mins || 0), 0)} min
           </b>
           <b>
             <small>Average pain entry</small>
@@ -1740,7 +1763,7 @@ function Reports({ ex, journal, notify }) {
           </div>
         ))}
         <div className="warning">
-          This report is generated locally for demonstration. Review the
+          This report contains only activity saved to your account. Review the
           information with your healthcare professional.
         </div>
         <button className="primary" onClick={csv}>
@@ -1754,7 +1777,7 @@ function Reports({ ex, journal, notify }) {
     </Page>
   );
 }
-function SettingsPage({ notify }) {
+function SettingsPage({ notify, currentUser }) {
   const [s, setS] = useState(() =>
     get("pt-settings", {
       reminders: true,
@@ -1783,11 +1806,11 @@ function SettingsPage({ notify }) {
           <Title title="Patient profile" />
           <label>
             Display name
-            <input defaultValue="Alex Morgan" />
+            <input defaultValue={currentUser?.user_metadata?.full_name || ""} />
           </label>
           <label>
             Email
-            <input defaultValue="alex.morgan@example.com" />
+            <input defaultValue={currentUser?.email || ""} />
           </label>
           <label>
             Preferred reminder time
