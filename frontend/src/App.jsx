@@ -12,11 +12,19 @@ import {
   Activity,
   Bell,
   Calendar,
+  CalendarClock,
+  CalendarDays,
   Check,
+  ChevronDown,
   ChevronRight,
+  CircleHelp,
+  ClipboardList,
   Clock,
+  CreditCard,
   Download,
   Dumbbell,
+  Ellipsis,
+  FileChartColumn,
   FileText,
   Clipboard,
   Flame,
@@ -36,6 +44,9 @@ import {
   Stethoscope,
   MessageCircle,
   Mail,
+  LayoutDashboard,
+  UserRound,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -52,6 +63,7 @@ import {
   Area,
 } from "recharts";
 import "./App.css";
+import "./components/PhysioSidebar.css";
 const initial = [
   {
     id: 1,
@@ -186,7 +198,11 @@ function App() {
         <Route
           path="/*"
           element={
-            loggedIn ? <Layout {...data} /> : <Navigate to="/login" replace />
+            loggedIn ? (
+              <Layout {...data} setLoggedIn={setLoggedIn} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         />
       </Routes>
@@ -199,92 +215,293 @@ function App() {
     </BrowserRouter>
   );
 }
-const links = [
-  ["/dashboard", "Overview", Home],
-  ["/exercises", "My Exercises", Dumbbell],
-  ["/sessions", "Guided Sessions", Play],
-  ["/analytics", "Progress & Analytics", TrendingUp],
-  ["/pain", "Pain Journal", HeartPulse],
-  ["/reports", "Therapist Reports", FileText],
-  ["/settings", "Settings", Settings],
+const dashboardNavigation = [
+  { label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  {
+    label: "Patients",
+    icon: Users,
+    items: [
+      { label: "All Patients", to: "/dashboard?view=patients" },
+      { label: "Add Patient", to: "/settings?view=add-patient" },
+      { label: "Patient Records", to: "/reports?view=patient-records" },
+    ],
+  },
+  {
+    label: "Appointments",
+    icon: CalendarDays,
+    items: [
+      { label: "All Appointments", to: "/sessions?view=appointments" },
+      { label: "Book Appointment", to: "/sessions?view=book-appointment" },
+      { label: "Today's Appointments", to: "/sessions?view=today-appointments" },
+    ],
+  },
+  {
+    label: "Therapists",
+    icon: UserRound,
+    items: [
+      { label: "All Therapists", to: "/analytics?view=therapists" },
+      { label: "Add Therapist", to: "/settings?view=add-therapist" },
+      { label: "Therapist Schedule", to: "/schedule?view=therapist-schedule" },
+    ],
+  },
+  {
+    label: "Treatment Plans",
+    icon: ClipboardList,
+    items: [
+      { label: "All Treatment Plans", to: "/exercises?view=treatment-plans" },
+      { label: "Create Treatment Plan", to: "/exercises?view=create-treatment-plan" },
+      { label: "Patient Progress", to: "/analytics?view=patient-progress" },
+    ],
+  },
+  {
+    label: "Exercise Programs",
+    icon: Activity,
+    items: [
+      { label: "Exercise Library", to: "/exercises?view=exercise-library" },
+      { label: "Assign Exercises", to: "/exercises?view=assign-exercises" },
+      { label: "Exercise Compliance", to: "/analytics?view=exercise-compliance" },
+    ],
+  },
+  { label: "Schedule", icon: CalendarClock, to: "/schedule" },
+  { label: "Messages", icon: MessageCircle, to: "/reports?view=messages", badge: "3" },
+  { label: "Notifications", icon: Bell, to: "/dashboard?view=notifications", badge: " " },
+  {
+    label: "Medical Reports",
+    icon: FileChartColumn,
+    items: [
+      { label: "Patient Reports", to: "/reports?view=patient-reports" },
+      { label: "Progress Reports", to: "/analytics?view=progress-reports" },
+      { label: "Exercise Reports", to: "/reports?view=exercise-reports" },
+    ],
+  },
+  {
+    label: "Payments",
+    icon: CreditCard,
+    items: [
+      { label: "All Payments", to: "/settings?view=payments" },
+      { label: "Pending Payments", to: "/settings?view=pending-payments" },
+      { label: "Invoices", to: "/settings?view=invoices" },
+    ],
+  },
 ];
+const bottomNavigation = [
+  {
+    label: "Settings",
+    icon: Settings,
+    items: [
+      { label: "Profile Settings", to: "/settings?view=profile-settings" },
+      { label: "Clinic Settings", to: "/settings?view=clinic-settings" },
+      { label: "Preferences", to: "/settings?view=preferences" },
+    ],
+  },
+  { label: "Help & Support", icon: CircleHelp, to: "/support" },
+];
+function SidebarNavItem({ item, isOpen, onToggle, onNavigate }) {
+  const location = useLocation();
+  const Icon = item.icon;
+  const currentLocation = `${location.pathname}${location.search}`;
+  const isCurrent = (to) => currentLocation === to;
+
+  if (!item.items) {
+    return (
+      <NavLink
+        end
+        to={item.to}
+        className={`clinic-nav-link${isCurrent(item.to) ? " is-active" : ""}`}
+        onClick={onNavigate}
+        aria-current={isCurrent(item.to) ? "page" : false}
+      >
+        <Icon aria-hidden="true" />
+        <span>{item.label}</span>
+        {item.badge && (
+          <b
+            className={`clinic-badge${item.label === "Notifications" ? " clinic-badge-dot" : ""}`}
+            aria-label={item.label === "Notifications" ? "Unread notification" : `${item.badge} unread messages`}
+          >
+            {item.badge}
+          </b>
+        )}
+      </NavLink>
+    );
+  }
+
+  const hasActiveChild = item.items.some(({ to }) => isCurrent(to));
+  const expanded = isOpen || hasActiveChild;
+  const groupId = `clinic-subnav-${item.label.toLowerCase().replaceAll(" ", "-")}`;
+
+  return (
+    <div className={`clinic-nav-group${hasActiveChild ? " has-active-child" : ""}`}>
+      <button
+        type="button"
+        className="clinic-nav-link clinic-group-trigger"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={groupId}
+      >
+        <Icon aria-hidden="true" />
+        <span>{item.label}</span>
+        <ChevronDown className={`clinic-chevron${expanded ? " is-open" : ""}`} aria-hidden="true" />
+      </button>
+      {expanded && (
+        <div className="clinic-subnav" id={groupId}>
+          {item.items.map(({ label, to }) => (
+            <NavLink
+              key={label}
+              end
+              to={to}
+              className={isCurrent(to) ? "is-active" : undefined}
+              onClick={onNavigate}
+              aria-current={isCurrent(to) ? "page" : false}
+            >
+              {label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function Layout(p) {
   const [mobile, setMobile] = useState(false);
   const [notes, setNotes] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState({});
+  useEffect(() => {
+    if (!mobile) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setMobile(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobile]);
+
+  const closeMobile = () => setMobile(false);
   return (
     <div className="shell">
-      <aside className={mobile ? "side open" : "side"}>
-        <div className="side-brand">
-          <NavLink to="/dashboard" className="brand" onClick={() => setMobile(false)}>
-            <i><Activity /></i>
-            <span className="side-brand-name">Physio<span>Track</span></span>
+      {mobile && (
+        <button
+          className="clinic-sidebar-backdrop"
+          type="button"
+          aria-label="Close navigation"
+          onClick={closeMobile}
+        />
+      )}
+      <aside
+        className={`clinic-sidebar${mobile ? " is-mobile-open" : ""}`}
+        id="clinic-sidebar"
+        aria-label="Dashboard navigation"
+        role={mobile ? "dialog" : undefined}
+        aria-modal={mobile ? true : undefined}
+      >
+        <div className="clinic-brand">
+          <NavLink to="/dashboard" onClick={closeMobile} aria-label="PhysioCare dashboard">
+            <span className="clinic-brand-mark"><HeartPulse aria-hidden="true" /></span>
+            <span className="clinic-brand-copy">
+              <strong>PhysioCare</strong>
+              <small>Management Portal</small>
+            </span>
           </NavLink>
           <button
-            className="close"
+            className="clinic-sidebar-close"
+            type="button"
             aria-label="Close sidebar"
-            onClick={() => setMobile(false)}
+            onClick={closeMobile}
           >
             <X />
           </button>
         </div>
-        <div className="person">
-          <div className="person-avatar">AM<span /></div>
-          <div className="person-info">
-            <strong>Alex Morgan</strong>
-            <small><HeartPulse size={12} /> Recovery journey</small>
-          </div>
-          <span className="profile-menu" aria-hidden="true">•••</span>
-        </div>
-        <div className="side-section-label">YOUR SPACE</div>
-        <nav className="side-nav" aria-label="Patient dashboard">
-          {links.map(([to, t, I], index) => (
-            <NavLink end to={to} key={t} onClick={() => setMobile(false)}>
-              <span className="side-nav-icon"><I size={18} /></span>
-              <span className="side-nav-copy">
-                <strong>{t}</strong>
-                <small>{[
-                  "Your plan at a glance",
-                  "Your prescribed movement",
-                  "Follow guided routines",
-                  "See how far you’ve come",
-                  "Log symptoms and notes",
-                  "Updates for your therapist",
-                  "Make it work for you",
-                ][index]}</small>
-              </span>
-              {t === "Guided Sessions" && <span className="side-nav-badge">4</span>}
-            </NavLink>
+        <nav className="clinic-main-nav" aria-label="Main navigation">
+          <span className="clinic-section-label">MAIN MENU</span>
+          {dashboardNavigation.map((item) => (
+            <SidebarNavItem
+              key={item.label}
+              item={item}
+              isOpen={Boolean(openGroups[item.label])}
+              onToggle={() =>
+                setOpenGroups((groups) => ({
+                  ...groups,
+                  [item.label]: !groups[item.label],
+                }))
+              }
+              onNavigate={closeMobile}
+            />
           ))}
         </nav>
-        <div className="side-goal">
-          <div className="side-goal-top">
-            <span className="side-goal-icon"><Flame size={15} /></span>
-            <span><small>THIS WEEK</small><strong>Weekly movement goal</strong></span>
-            <b>75%</b>
+        <div className="clinic-sidebar-footer">
+          <nav className="clinic-bottom-nav" aria-label="Settings and support">
+            {bottomNavigation.map((item) => (
+              <SidebarNavItem
+                key={item.label}
+                item={item}
+                isOpen={Boolean(openGroups[item.label])}
+                onToggle={() =>
+                  setOpenGroups((groups) => ({
+                    ...groups,
+                    [item.label]: !groups[item.label],
+                  }))
+                }
+                onNavigate={closeMobile}
+              />
+            ))}
+          </nav>
+          <div className="clinic-profile">
+            <div className="clinic-profile-avatar" aria-hidden="true">AM</div>
+            <div className="clinic-profile-copy">
+              <strong>Dr. Alex Morgan</strong>
+              <span>Physiotherapist</span>
+            </div>
+            <button
+              type="button"
+              className="clinic-profile-menu-trigger"
+              aria-label="Open profile actions"
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+            >
+              <Ellipsis aria-hidden="true" />
+            </button>
+            {profileMenuOpen && (
+              <div className="clinic-profile-menu" role="menu">
+                <NavLink
+                  to="/settings?view=profile-settings"
+                  role="menuitem"
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    closeMobile();
+                  }}
+                >
+                  Profile settings
+                </NavLink>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    localStorage.removeItem("pt-auth");
+                    p.setLoggedIn(false);
+                  }}
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
-          <div className="side-goal-track"><i /></div>
-          <p><strong>18 of 24</strong> exercises complete</p>
-        </div>
-        <div className="help">
-          <span className="help-icon"><MessageCircle size={16} /></span>
-          <div><b>Need a hand?</b><p>Your care team is here when you need support.</p></div>
-          <ArrowRight size={15} />
-        </div>
-        <div className="therapist">
-          <div className="therapist-avatar">JR<span /></div>
-          <div className="therapist-info">
-            <small>YOUR CARE PARTNER</small>
-            <strong>Jordan Reed, PT</strong>
-          </div>
-          <span className="therapist-status">ONLINE</span>
         </div>
       </aside>
-      <main>
+      <main className="clinic-main">
         <header>
           <button
             className="menub"
+            type="button"
             aria-label="Open dashboard navigation"
             aria-expanded={mobile}
+            aria-controls="clinic-sidebar"
             onClick={() => setMobile(true)}
           >
             <Menu />
@@ -324,9 +541,11 @@ function Layout(p) {
           <Route path="/dashboard" element={<Overview {...p} />} />
           <Route path="/exercises" element={<Exercises {...p} />} />
           <Route path="/sessions" element={<Sessions {...p} />} />
+          <Route path="/schedule" element={<Sessions {...p} />} />
           <Route path="/analytics" element={<Analytics {...p} />} />
           <Route path="/pain" element={<Pain {...p} />} />
           <Route path="/reports" element={<Reports {...p} />} />
+          <Route path="/support" element={<Reports {...p} />} />
           <Route path="/settings" element={<SettingsPage {...p} />} />
         </Routes>
       </main>
