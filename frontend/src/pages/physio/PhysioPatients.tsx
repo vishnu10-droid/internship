@@ -125,7 +125,7 @@ export function PhysioPatients() {
           >
             <option value="all">Adherence</option>
             <option value="good">Good (≥70%)</option>
-            <option value="low">Low (<70%)</option>
+            <option value="low">Low at 70% or less</option>
           </select>
           <select
             onChange={(e) => handleFilterChange("pain", e.target.value)}
@@ -198,18 +198,14 @@ export function PhysioPatients() {
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5, 6, 7]
-                          .map(
-                            (i) =>
-                              `<span
-                                className="w-1 h-1 rounded-full ${
-                                  i <= p.painTrend
-                                    ? "bg-primary"
-                                    : "bg-secondary"
-                                }"
-                                /></span>`
-                          )
-                          .join("")}
+                        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                          <div
+                            key={i}
+                            className={`w-1 h-1 rounded-full ${
+                              i <= p.painTrend ? "bg-primary" : "bg-secondary"
+                            }`}
+                          /></div>
+                        ))}
                       </div>
                       <small className="text-muted"> avg pain</small>
                     </td>

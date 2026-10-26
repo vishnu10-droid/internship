@@ -118,8 +118,8 @@ export function SettingsPagePhysio() {
                 onChange={() => {}}
                 className="checkbox-checkbox disabled:opacity-50 disabled:cursor-not-allowed"
               />
-              <option>Session completion alerts</span>
-            </label>
+<span>Session completion alerts</span>
+</label>
             <label className="flex items-center gap-3">
               <input
                 type="checkbox"
@@ -127,7 +127,7 @@ export function SettingsPagePhysio() {
                 onChange={() => toggleSetting("autoBackup")}
                 className="checkbox-checkbox"
               />
-              <option>Auto-backup session data</span>
+              <span>Auto-backup session data</span>
             </label>
           </div>
         </div>
@@ -150,7 +150,7 @@ export function SettingsPagePhysio() {
           </div>
           <div className="flex items-center gap-3">
             <span className="w-4 h-4 rounded-full bg-info/60" />
-            <option>Email digests</span>
+            <span>Email digests</span>
           </div>
         </div>
       </div>

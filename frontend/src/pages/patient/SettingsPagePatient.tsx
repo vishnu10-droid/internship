@@ -127,7 +127,7 @@ export function SettingsPagePatient() {
                 onChange={() => {}}
                 className="checkbox-checkbox disabled:opacity-50 disabled:cursor-not-allowed"
               />
-              <option>Pain alert notifications</span>
+              <span>Pain alert notifications</span>
             </label>
           </div>
         </div>

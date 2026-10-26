@@ -55,7 +55,7 @@ export function LandingPage() {
             <NavLink to="/" className="font-bold text-2xl mb-4 block">PhysioTrack</NavLink>
             <NavLink to="#features" className="mb-4 block hover:text-teal transition-colors">Features</NavLink>
             <NavLink to="#how" className="mb-4 block hover:text-teal transition-colors">How it works</NavLink>
-            <NavLink to="/login" className="mb-4 block hover:text-teal transition-colors">Login</Link>
+            <NavLink to="/login" className="mb-4 block hover:text-teal transition-colors">Login</NavLink>
             <NavLink to="/register" className="mb-4 block hover:text-teal transition-colors">Get started</NavLink>
             <button
               onClick={() => setShowFeatures(false)}
@@ -538,8 +538,8 @@ export function LandingPage() {
           <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row justify-between align-items-center">
             <p className="text-white/60 text-sm">2026 PhysioTrack AI. All rights reserved.</p>
             <div className="flex items-center gap-4">
-              <NavLink to="/about" className="text-white/60 hover:text-teal transition-colors text-sm">About</a>
-              <NavLink to="/contact" className="text-white/60 hover:text-teal transition-colors text-sm">Contact</a>
+              <NavLink to="/about" className="text-white/60 hover:text-teal transition-colors text-sm">About</NavLink>
+              <NavLink to="/contact" className="text-white/60 hover:text-teal transition-colors text-sm">Contact</NavLink>
             </div>
           </div>
         </div>

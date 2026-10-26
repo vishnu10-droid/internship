@@ -49,7 +49,7 @@ export function AuditLogs() {
 
   const rangeLogs = filteredLogs.filter(
     (log) =>
-      new Date(log.timestamp). >= new Date(dateRange.start) &&
+      new Date(log.timestamp) >= new Date(dateRange.start) &&
       new Date(log.timestamp) <= new Date(dateRange.end)
   );
 
